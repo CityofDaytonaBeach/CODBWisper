@@ -20,9 +20,24 @@ async function waitFor(page, fn, timeoutMs, label) {
       last = await fn();
       if (last) return last;
     } catch {}
+    if ((Date.now() - start) % 5000 < 500) {
+      const diag = await page
+        .evaluate(() => ({
+          err: document.querySelector(".err")?.textContent ?? null,
+          logs: document.querySelector(".logs pre")?.textContent?.slice(-600) ?? null,
+          body: document.body.innerText.includes("Model ready.") || document.body.innerText.includes("Transcribing"),
+        }))
+        .catch(() => null);
+      if (diag?.err) throw new Error(`[${label}] failed: ${diag.err}`);
+      if (Date.now() - start > 30000) {
+        console.log(`  ...still waiting for ${label} (${Math.round((Date.now() - start) / 1000)}s)`);
+      }
+      if (diag?.logs) console.log("  worker log tail:", JSON.stringify(diag.logs));
+    }
     await wait(500);
   }
-  throw new Error(`Timed out waiting for ${label}`);
+  const errText = await page.evaluate(() => document.querySelector(".err")?.textContent ?? "(none)").catch(() => "(page closed)");
+  throw new Error(`Timed out waiting for ${label}. page error: ${errText}`);
 }
 
 async function makeToneWav(dir) {
@@ -58,6 +73,7 @@ async function makeToneWav(dir) {
 
 const browser = null;
 const preview = spawn(BUN, ["run", "preview", "--port", "4173"], { cwd: process.cwd(), detached: true, stdio: "ignore" });
+const PROFILE = path.join(process.env.TEMP ?? os.tmpdir(), "opencode", "codb-e2e-profile");
 const tmp = await mkdtemp(path.join(os.tmpdir(), "codb-e2e-"));
 
 try {
@@ -68,7 +84,7 @@ try {
     executablePath: CHROME,
     headless: "new",
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--autoplay-policy=no-user-gesture-required"],
-    userDataDir: path.join(tmp, "profile"),
+    userDataDir: PROFILE,
   });
 
   const page = await browser.newPage();
@@ -88,6 +104,17 @@ try {
   // Verify cross-origin isolation came from our headers
   const isolated = await page.evaluate(() => window.crossOriginIsolated);
   console.log(`[2] crossOriginIsolated: ${isolated}`);
+
+  // Force the device selector to WASM (WebGPU is unreliable in headless)
+  await page.evaluate(() => {
+    const sel = document.querySelectorAll("select")[1];
+    const opt = [...sel.options].find((o) => o.value === "wasm");
+    if (opt) {
+      sel.value = "wasm";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+  await wait(200);
 
   // 3. Upload the generated wav
   const [fileChooser] = await Promise.all([
@@ -153,9 +180,16 @@ try {
 
   await browser.close();
 } finally {
-  await rm(tmp, { recursive: true, force: true });
+  try {
+    await rm(tmp, { recursive: true, force: true });
+  } catch {
+    await wait(1500);
+    await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+  }
   try {
     process.kill(-preview.pid);
   } catch {}
-  preview.kill();
+  try {
+    preview.kill();
+  } catch {}
 }
