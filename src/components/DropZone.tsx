@@ -22,7 +22,16 @@ export default function DropZone(props: Props) {
   return (
     <section
       className={`dropzone ${dragging ? "dragging" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label="Upload audio or video file"
       onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);

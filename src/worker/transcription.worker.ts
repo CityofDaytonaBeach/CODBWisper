@@ -4,10 +4,15 @@ import { env, pipeline } from "@huggingface/transformers";
 import type { AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
 
 env.useBrowserCache = true;
-env.allowLocalModels = true;
-env.localModelPath = "./models/";
+env.allowLocalModels = false;
 
 let asr: AutomaticSpeechRecognitionPipeline | null = null;
+
+interface ASROutput {
+  text: string;
+  chunks?: Array<{ timestamp?: [number, number]; text: string }>;
+  language?: string;
+}
 
 function post(msg: unknown, transfer?: Transferable[]): void {
   (self as unknown as Worker).postMessage(msg, transfer ?? []);
@@ -19,16 +24,18 @@ self.onmessage = async (ev: MessageEvent) => {
     const attempts: Array<"webgpu" | "wasm"> = msg.device === "webgpu" ? ["webgpu", "wasm"] : ["wasm"];
     for (const d of attempts) {
       try {
-        const device: any = d;
-        type SimplePipe = (task: string, model: string, opts?: Record<string, unknown>) => Promise<AutomaticSpeechRecognitionPipeline>;
-        const pipe = pipeline as unknown as SimplePipe;
+        const pipe = pipeline as unknown as (
+          task: string,
+          model: string,
+          opts?: Record<string, unknown>,
+        ) => Promise<AutomaticSpeechRecognitionPipeline>;
         asr = await pipe("automatic-speech-recognition", msg.model, {
-          device,
-          dtype: device === "webgpu" ? "fp32" : undefined,
+          device: d,
+          dtype: d === "webgpu" ? "fp32" : undefined,
           progress_callback: (p: { status?: string; file?: string; progress?: number }) =>
             post({ type: "model-progress", status: p.status, file: p.file, progress: p.progress }),
         });
-        post({ type: "ready", device, model: msg.model });
+        post({ type: "ready", device: d, model: msg.model });
         return;
       } catch (err) {
         post({ type: "log", message: `Loading on "${d}" failed: ${String(err)}` });
@@ -48,10 +55,10 @@ self.onmessage = async (ev: MessageEvent) => {
         options.language = msg.language;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const output = (await asr(msg.pcm as Float32Array, options)) as any;
-      const text: string = typeof output.text === "string" ? output.text : (output.text[0]?.text ?? "");
-      const rawChunks: Array<{ timestamp: [number, number]; text: string }> = output.chunks ?? [];
+      const raw = await asr(msg.pcm as Float32Array, options);
+      const output: ASROutput = Array.isArray(raw) ? (raw[0] as ASROutput) : (raw as ASROutput);
+      const text: string = typeof output.text === "string" ? output.text : "";
+      const rawChunks = output.chunks ?? [];
 
       const chunks = rawChunks
         .map((c) => ({ start: +(c.timestamp?.[0] ?? 0), end: +(c.timestamp?.[1] ?? 0), text: c.text.trim() }))

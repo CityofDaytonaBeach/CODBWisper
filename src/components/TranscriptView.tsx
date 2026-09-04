@@ -81,11 +81,13 @@ export default function TranscriptView(props: Props) {
             placeholder="Search transcript…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search transcript"
           />
           <button
             className="btn"
             onClick={() => copy(tab === "srt" ? srt : tab === "vtt" ? vtt : tab === "json" ? json : text, tab)}
             disabled={result.segments.length === 0}
+            aria-label={`Copy ${tab} to clipboard`}
           >
             {touched?.item === tab ? "Copied ✓" : "Copy"}
           </button>
@@ -93,15 +95,23 @@ export default function TranscriptView(props: Props) {
             className="btn"
             onClick={() => downloadText(`${base}.${tab === "json" ? "json" : tab === "text" ? "txt" : tab}`, tab === "srt" ? srt : tab === "vtt" ? vtt : tab === "json" ? json : text, tab === "json" ? "application/json" : tab === "vtt" ? "text/vtt" : "text/plain")}
             disabled={result.segments.length === 0}
+            aria-label={`Download ${tab} file`}
           >
             Download
           </button>
         </div>
       </div>
 
-      <div className="tabs">
+      <div className="tabs" role="tablist">
         {TABS.map((t) => (
-          <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
+          <button
+            key={t.id}
+            className={`tab ${tab === t.id ? "active" : ""}`}
+            onClick={() => setTab(t.id)}
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
+          >
             {t.label}
             {t.id === "segments" && query && filtered.length !== result.segments.length ? (
               <span className="count">{filtered.length}</span>
@@ -111,11 +121,16 @@ export default function TranscriptView(props: Props) {
       </div>
 
       {tab === "segments" && (
-        <ul className="segments">
+        <ul className="segments" role="tabpanel" id="panel-segments">
           {filtered.length === 0 && <li className="empty">No matching segments.</li>}
           {filtered.map((seg, i) => (
             <li key={i}>
-              <button className="seg-time" onClick={() => onSeek(seg.start)} title="Jump to this moment">
+              <button
+                className="seg-time"
+                onClick={() => onSeek(seg.start)}
+                title="Jump to this moment"
+                aria-label={`Jump to ${formatHMS(seg.start)}`}
+              >
                 {formatHMS(seg.start)}
               </button>
               <span className="seg-text">{highlight(seg.text, query.trim())}</span>

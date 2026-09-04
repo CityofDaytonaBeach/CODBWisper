@@ -8,6 +8,12 @@
       name="description"
       content="100% browser, VPS-free, fully offline Whisper transcription. No uploads, no servers, no API keys."
     />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://huggingface.co https://*.huggingface.co; worker-src 'self' blob:; img-src 'self' data:; font-src 'self';"
+    />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0e1116" />
   </head>
   <body>
     <div id="root"></div>

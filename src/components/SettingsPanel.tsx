@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ModelOption } from "../lib/models";
 import { MODELS, BIG_MODELS, DEVICES, LANGUAGES } from "../lib/models";
 
@@ -21,9 +22,23 @@ function allModels(): Array<ModelOption | "divider"> {
   return [...MODELS, "divider", ...BIG_MODELS];
 }
 
+const LARGE_MODEL_THRESHOLD_MB = 500;
+
 export default function SettingsPanel(props: Props) {
   const { modelStatus, model, device, language, modelProgress, logs, webgpuAvailable } = props;
   const busy = modelStatus === "loading";
+  const [confirmLarge, setConfirmLarge] = useState(false);
+
+  const handleLoad = () => {
+    const sizeStr = model.size;
+    const sizeMB = parseInt(sizeStr.replace(/[^0-9]/g, ""), 10);
+    if (sizeMB >= LARGE_MODEL_THRESHOLD_MB && modelStatus !== "ready" && !confirmLarge) {
+      setConfirmLarge(true);
+      return;
+    }
+    setConfirmLarge(false);
+    props.onLoad();
+  };
 
   return (
     <section className="panel">
@@ -38,6 +53,7 @@ export default function SettingsPanel(props: Props) {
             const found = allModels().find((m) => m !== "divider" && m.id === id) as ModelOption | undefined;
             if (found) props.onModelChange(found);
           }}
+          aria-label="Select Whisper model"
         >
           <optgroup label="Standard (fast, smaller download)">
             {MODELS.map((m) => (
@@ -62,6 +78,7 @@ export default function SettingsPanel(props: Props) {
           value={device}
           disabled={busy}
           onChange={(e) => props.onDeviceChange(e.target.value as "webgpu" | "wasm")}
+          aria-label="Select inference device"
         >
           {DEVICES.map((d) => (
             <option key={d.id} value={d.id} disabled={d.id === "webgpu" && !webgpuAvailable}>
@@ -74,7 +91,7 @@ export default function SettingsPanel(props: Props) {
 
       <label className="field">
         <span>Language</span>
-        <select value={language} disabled={busy} onChange={(e) => props.onLanguageChange(e.target.value)}>
+        <select value={language} disabled={busy} onChange={(e) => props.onLanguageChange(e.target.value)} aria-label="Select language">
           {LANGUAGES.map(([code, label]) => (
             <option key={code} value={code}>
               {label}
@@ -84,9 +101,23 @@ export default function SettingsPanel(props: Props) {
         <small className="hint">"Auto-detect" works best with multilingual models.</small>
       </label>
 
-      <button className="btn primary" onClick={props.onLoad} disabled={busy}>
+      <button className="btn primary" onClick={handleLoad} disabled={busy} aria-label={busy ? "Loading model" : modelStatus === "ready" ? "Reload model" : "Load model"}>
         {busy ? "Loading model…" : modelStatus === "ready" ? "Reload model" : "Load model"}
       </button>
+
+      {confirmLarge && (
+        <div className="err" style={{ marginTop: "8px" }}>
+          <p style={{ margin: "0 0 8px" }}>
+            This model is {model.size}. Download may take a while and use significant memory.
+          </p>
+          <button className="btn" onClick={handleLoad} style={{ marginRight: "8px" }}>
+            Download anyway
+          </button>
+          <button className="btn" onClick={() => setConfirmLarge(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       {busy && modelProgress && (
         <div className="progress-block">
